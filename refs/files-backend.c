@@ -879,8 +879,7 @@ static struct ref_iterator *files_ref_iterator_begin(
 
 	CALLOC_ARRAY(iter, 1);
 	ref_iterator = &iter->base;
-	base_ref_iterator_init(ref_iterator, &files_ref_iterator_vtable,
-			       overlay_iter->ordered);
+	base_ref_iterator_init(ref_iterator, &files_ref_iterator_vtable);
 	iter->iter0 = overlay_iter;
 	iter->repo = ref_store->repo;
 	iter->flags = flags;
@@ -2116,10 +2115,8 @@ static int files_for_each_reflog_ent(struct ref_store *ref_store,
 
 struct files_reflog_iterator {
 	struct ref_iterator base;
-
 	struct ref_store *ref_store;
 	struct dir_iterator *dir_iterator;
-	struct object_id oid;
 };
 
 static int files_reflog_iterator_advance(struct ref_iterator *ref_iterator)
@@ -2130,25 +2127,13 @@ static int files_reflog_iterator_advance(struct ref_iterator *ref_iterator)
 	int ok;
 
 	while ((ok = dir_iterator_advance(diter)) == ITER_OK) {
-		int flags;
-
 		if (!S_ISREG(diter->st.st_mode))
 			continue;
-		if (diter->basename[0] == '.')
+		if (check_refname_format(diter->basename,
+					 REFNAME_ALLOW_ONELEVEL))
 			continue;
-		if (ends_with(diter->basename, ".lock"))
-			continue;
-
-		if (!refs_resolve_ref_unsafe(iter->ref_store,
-					     diter->relative_path, 0,
-					     &iter->oid, &flags)) {
-			error("bad ref for %s", diter->path.buf);
-			continue;
-		}
 
 		iter->base.refname = diter->relative_path;
-		iter->base.oid = &iter->oid;
-		iter->base.flags = flags;
 		return ITER_OK;
 	}
 
@@ -2193,7 +2178,7 @@ static struct ref_iterator *reflog_iterator_begin(struct ref_store *ref_store,
 
 	strbuf_addf(&sb, "%s/logs", gitdir);
 
-	diter = dir_iterator_begin(sb.buf, 0);
+	diter = dir_iterator_begin(sb.buf, DIR_ITERATOR_SORTED);
 	if (!diter) {
 		strbuf_release(&sb);
 		return empty_ref_iterator_begin();
@@ -2202,7 +2187,7 @@ static struct ref_iterator *reflog_iterator_begin(struct ref_store *ref_store,
 	CALLOC_ARRAY(iter, 1);
 	ref_iterator = &iter->base;
 
-	base_ref_iterator_init(ref_iterator, &files_reflog_iterator_vtable, 0);
+	base_ref_iterator_init(ref_iterator, &files_reflog_iterator_vtable);
 	iter->dir_iterator = diter;
 	iter->ref_store = ref_store;
 	strbuf_release(&sb);
@@ -2246,7 +2231,7 @@ static struct ref_iterator *files_reflog_iterator_begin(struct ref_store *ref_st
 		return reflog_iterator_begin(ref_store, refs->gitcommondir);
 	} else {
 		return merge_ref_iterator_begin(
-			0, reflog_iterator_begin(ref_store, refs->base.gitdir),
+			reflog_iterator_begin(ref_store, refs->base.gitdir),
 			reflog_iterator_begin(ref_store, refs->gitcommondir),
 			reflog_iterator_select, refs);
 	}
